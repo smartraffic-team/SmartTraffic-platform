@@ -120,8 +120,8 @@ export function Skeleton() {
 export function ErrorState() {
   return (
     <Card className="empty">
-      Não foi possível carregar os dados demonstrativos. Atualize a página para
-      tentar novamente.
+      Não foi possível carregar os dados da API. Atualize a página para tentar
+      novamente.
     </Card>
   );
 }

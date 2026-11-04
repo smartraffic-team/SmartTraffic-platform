@@ -1,93 +1,124 @@
-export type UserRole = 'ADMIN' | 'OPERATOR' | 'VIEWER';
+export type UserRole = 'ADMINISTRADOR' | 'OPERADOR' | 'VISUALIZADOR';
 export interface User {
   id: string;
-  name: string;
-  role: UserRole;
+  nome: string;
+  email: string;
+  nivelAcesso: UserRole;
+  ativo: boolean;
 }
-export type DeviceType =
-  'camera' | 'edge' | 'microcontroller' | 'controller' | 'gateway';
-export type DeviceStatus = 'online' | 'offline' | 'warning';
-export type SignalPhase = 'red' | 'yellow' | 'green' | 'unknown';
-export type SignalState = 'active' | 'inactive';
-export type OperatingMode = 'adaptive' | 'fixed' | 'manual';
-export type VehicleCategory =
-  'cars' | 'motorcycles' | 'buses' | 'trucks' | 'other';
-export interface Intersection {
+export interface LoginResponse {
+  accessToken: string;
+  tokenType: 'Bearer';
+  expiresIn: number;
+  usuario: User;
+}
+export interface Page<T> {
+  dados: T[];
+  total: number;
+  pagina: number;
+  limite: number;
+}
+export interface PeriodQuery {
+  pagina?: number;
+  limite?: number;
+  inicio?: string;
+  fim?: string;
+  ordem?: 'asc' | 'desc';
+}
+export interface Crossing {
+  id: number;
+  codigo: string;
+  nome: string;
+  descricao: string | null;
+  ambiente: string;
+  ativo: boolean;
+  atualizadoEm: string;
+}
+export interface Road {
   id: string;
-  code: string;
-  name: string;
-  address: string;
-  status: DeviceStatus;
-  mode: OperatingMode;
-  phase: SignalPhase;
-  updatedAt: string;
-  approaches: string[];
+  cruzamentoId: number;
+  codigo: 'A' | 'B';
+  nome: string;
+  ativa: boolean;
+}
+export interface Signal {
+  id: string;
+  viaId: string;
+  nome: string;
+  corAtual: string;
+  modoOperacao: string;
+  ativo: boolean;
+  atualizadoEm: string;
+  vias: Road;
 }
 export interface Device {
   id: string;
-  name: string;
-  type: DeviceType;
-  intersectionId: string;
-  status: DeviceStatus;
-  lastSeen: string;
-  version: string;
-  ip?: string;
-  cpu?: number;
-  memory?: number;
-  temperature?: number;
-  latency?: number;
-  fps?: number;
+  cruzamentoId: number;
+  viaId: string | null;
+  codigo: string;
+  nome: string;
+  tipo: string;
+  modelo: string | null;
+  versaoSoftware: string | null;
+  enderecoIp: string | null;
+  status: string;
+  ativo: boolean;
+  ultimoContatoEm: string | null;
 }
-export interface DeviceHeartbeat {
-  deviceId: string;
-  timestamp: string;
-  status: DeviceStatus;
-  latency?: number;
-}
-export interface TrafficMeasurement {
+export interface Reading {
   id: string;
-  intersectionId: string;
-  timestamp: string;
-  approach: string;
-  cars: number;
-  motorcycles: number;
-  buses: number;
-  trucks: number;
-  other: number;
-  source: string;
+  viaId: string;
+  dispositivoId: string;
+  registradoEm: string;
+  tipoLeitura: 'QUADRO' | 'AGREGADA';
+  origemLeitura: string;
+  carrosDetectados: number;
+  pedestresDetectados: number;
+  veiculosEmEspera: number | null;
+  veiculosUnicos: number | null;
+  periodoInicioEm: string | null;
 }
-export type AlertSeverity = 'info' | 'warning' | 'critical';
-export type AlertStatus = 'active' | 'acknowledged' | 'resolved';
 export interface Alert {
   id: string;
-  intersectionId: string;
-  deviceId?: string;
-  category: string;
-  title: string;
-  description: string;
-  severity: AlertSeverity;
-  status: AlertStatus;
-  createdAt: string;
-  resolvedAt?: string;
+  dispositivoId: string | null;
+  tipo: string;
+  titulo: string;
+  gravidade: 'INFO' | 'AVISO' | 'CRITICO';
+  situacao: 'ATIVO' | 'RECONHECIDO' | 'RESOLVIDO';
+  descricao: string;
+  ocorridoEm: string;
+  reconhecidoEm: string | null;
+  resolvidoEm: string | null;
 }
-export interface DashboardSummary {
-  intersections: number;
-  devicesOnline: number;
-  devicesOffline: number;
-  vehicleDetections: number;
-  activeAlerts: number;
-  adaptiveIntersections: number;
-}
-export type Scenario =
-  'normal' | 'peak' | 'reduced' | 'offline' | 'camera-failure';
 export interface Telemetry {
-  timestamp: string;
-  count: number;
-  phase: SignalPhase;
-  remainingSeconds?: number;
-  latency?: number;
-  fps?: number;
-  edgeStatus: DeviceStatus;
-  controllerStatus: DeviceStatus;
-  cameraStatus: DeviceStatus;
+  id: string;
+  dispositivoId: string;
+  registradoEm: string;
+  status: string;
+  cpuPercentual: number | null;
+  memoriaPercentual: number | null;
+  temperaturaC: number | null;
+  fps: number | null;
+  latenciaMs: number | null;
+}
+export interface Phase {
+  id: string;
+  semaforoId: string;
+  cor: string;
+  inicioEm: string;
+  fimEm: string | null;
+  origemEstado: string;
+  modoOperacao: string | null;
+}
+export interface Summary {
+  dispositivosOnline: number;
+  dispositivosOffline: number;
+  alertasAtivos: number;
+  leiturasRegistradas: number;
+  semaforos: Array<
+    Pick<Signal, 'id' | 'corAtual' | 'modoOperacao' | 'atualizadoEm'> & {
+      vias: Pick<Road, 'codigo'>;
+    }
+  >;
+  ultimosContatos: Array<Pick<Device, 'id' | 'ultimoContatoEm' | 'status'>>;
 }

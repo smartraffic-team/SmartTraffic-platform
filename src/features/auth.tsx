@@ -1,11 +1,28 @@
-import { useNavigate, Link } from 'react-router-dom';
-import { ArrowRight, ShieldCheck } from 'lucide-react';
-import { users } from '../mocks/fixtures';
-import { useApp } from '../stores/app';
-import { Button, Card } from '../components/ui';
+import { useState, type FormEvent } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { Card, Button, Input } from '../components/ui';
+import { authApi, session } from '../services/http';
 export function LoginPage() {
   const navigate = useNavigate();
-  const setUser = useApp((s) => s.setUser);
+  const [email, setEmail] = useState('');
+  const [senha, setSenha] = useState('');
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    setBusy(true);
+    setError('');
+    try {
+      session.set(await authApi.login(email, senha));
+      navigate('/dashboard', { replace: true });
+    } catch (cause) {
+      setError(
+        cause instanceof Error ? cause.message : 'Não foi possível entrar.',
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
   return (
     <div className="auth-page">
       <div className="auth-visual">
@@ -18,71 +35,48 @@ export function LoginPage() {
         <div>
           <span className="eyebrow">PLATAFORMA DE MONITORAMENTO</span>
           <h1>Mobilidade urbana com mais clareza.</h1>
-          <p>
-            Acompanhe cruzamentos, dispositivos e fluxo veicular em um só lugar.
-          </p>
+          <p>Dados registrados pela API SmartTraffic.</p>
         </div>
         <small>Protótipo acadêmico · Registro, SP</small>
       </div>
       <div className="auth-form">
         <Card>
           <div className="auth-form-head">
-            <ShieldCheck size={28} />
-            <h2>Entrar na demonstração</h2>
-            <p>
-              Escolha um perfil fictício para explorar o painel. Não há
-              autenticação real.
-            </p>
+            <h2>Entrar</h2>
+            <p>Use a conta cadastrada na API.</p>
           </div>
-          <div className="profile-list">
-            {users.map((user) => (
-              <button
-                key={user.id}
-                onClick={() => {
-                  setUser(user);
-                  navigate('/dashboard');
-                }}
-              >
-                <span className="avatar">{user.name[0]}</span>
-                <span>
-                  <strong>{user.name}</strong>
-                  <small>
-                    {user.role === 'ADMIN'
-                      ? 'Administrador · acesso completo'
-                      : user.role === 'OPERATOR'
-                        ? 'Operador · monitoramento e alertas'
-                        : 'Visualizador · consulta e relatórios'}
-                  </small>
-                </span>
-                <ArrowRight size={17} />
-              </button>
-            ))}
-          </div>
+          <form className="form-grid" onSubmit={submit}>
+            <label className="field">
+              <span>E-mail</span>
+              <Input
+                type="email"
+                autoComplete="username"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+              />
+            </label>
+            <label className="field">
+              <span>Senha</span>
+              <Input
+                type="password"
+                autoComplete="current-password"
+                value={senha}
+                onChange={(e) => setSenha(e.target.value)}
+                required
+              />
+            </label>
+            {error && (
+              <p className="error-text" role="alert">
+                {error}
+              </p>
+            )}
+            <Button type="submit" disabled={busy}>
+              {busy ? 'Entrando…' : 'Entrar'}
+            </Button>
+          </form>
         </Card>
       </div>
-    </div>
-  );
-}
-export function DeniedPage() {
-  return (
-    <div className="center-page">
-      <ShieldCheck size={42} />
-      <h1>Acesso negado</h1>
-      <p>Seu perfil demonstrativo não tem permissão para esta ação.</p>
-      <Link to="/dashboard">
-        <Button>Voltar à visão geral</Button>
-      </Link>
-    </div>
-  );
-}
-export function NotFoundPage() {
-  return (
-    <div className="center-page">
-      <h1>Página não encontrada</h1>
-      <p>Confira o endereço ou retorne ao painel.</p>
-      <Link to="/dashboard">
-        <Button>Ir para a visão geral</Button>
-      </Link>
     </div>
   );
 }

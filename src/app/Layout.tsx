@@ -1,64 +1,43 @@
-import { useEffect, useState } from 'react';
-import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { useState } from 'react';
+import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import {
   Activity,
   Bell,
-  ChevronDown,
-  ChevronLeft,
-  ChevronRight,
-  CircleHelp,
   Cpu,
   FileBarChart2,
   LayoutDashboard,
   ListFilter,
-  Menu,
+  LogOut,
   Moon,
   Settings,
   Sun,
   TrafficCone,
   TriangleAlert,
-  X,
 } from 'lucide-react';
-import { useApp } from '../stores/app';
+import { useSummary } from '../hooks/useData';
 import { can } from '../lib/permissions';
-import { Button } from '../components/ui';
+import { session } from '../services/http';
+import type { User } from '../types';
 const nav = [
-  { to: '/dashboard', label: 'Visão Geral', icon: LayoutDashboard },
-  { to: '/intersections', label: 'Cruzamentos', icon: TrafficCone },
-  { to: '/devices', label: 'Dispositivos IoT', icon: Cpu },
-  { to: '/traffic', label: 'Fluxo de Trânsito', icon: Activity },
+  { to: '/dashboard', label: 'Visão geral', icon: LayoutDashboard },
+  { to: '/intersections', label: 'Cruzamento', icon: TrafficCone },
+  { to: '/devices', label: 'Dispositivos', icon: Cpu },
+  { to: '/traffic', label: 'Fluxo', icon: Activity },
   { to: '/monitoring', label: 'Monitoramento', icon: ListFilter },
   { to: '/alerts', label: 'Alertas', icon: TriangleAlert },
   { to: '/reports', label: 'Relatórios', icon: FileBarChart2 },
   { to: '/settings', label: 'Configurações', icon: Settings },
 ];
-export function Layout() {
-  const [collapsed, setCollapsed] = useState(false);
-  const [mobile, setMobile] = useState(false);
-  const [userOpen, setUserOpen] = useState(false);
-  const location = useLocation();
+export function Layout({ user }: { user: User }) {
   const navigate = useNavigate();
-  const user = useApp((s) => s.user);
-  const preferences = useApp((s) => s.preferences);
-  const setPreferences = useApp((s) => s.setPreferences);
-  const setUser = useApp((s) => s.setUser);
-  const alerts = useApp((s) => s.alerts);
-  const toast = useApp((s) => s.toast);
-  const clearToast = useApp((s) => s.clearToast);
-  const scenario = useApp((s) => s.scenario);
-  const paused = useApp((s) => s.paused);
-  const active = nav.find((item) => location.pathname.startsWith(item.to));
-  const unresolved = alerts.filter((a) => a.status !== 'resolved').length;
-  useEffect(() => {
-    if (!toast) return;
-    const id = window.setTimeout(clearToast, 4000);
-    return () => window.clearTimeout(id);
-  }, [toast, clearToast]);
+  const [theme, setTheme] = useState(
+    localStorage.getItem('st-theme') || 'light',
+  );
+  const [mobile, setMobile] = useState(false);
+  const summary = useSummary();
+  const active = summary.data?.alertasAtivos || 0;
   return (
-    <div
-      className={`app-shell ${collapsed ? 'is-collapsed' : ''}`}
-      data-theme={preferences.theme}
-    >
+    <div className="app-shell" data-theme={theme}>
       <aside className={`sidebar ${mobile ? 'mobile-open' : ''}`}>
         <div className="sidebar-top">
           <NavLink
@@ -74,20 +53,13 @@ export function Layout() {
               <small>PAINEL OPERACIONAL</small>
             </span>
           </NavLink>
-          <button
-            className="mobile-close icon-button"
-            onClick={() => setMobile(false)}
-            aria-label="Fechar menu"
-          >
-            <X size={20} />
-          </button>
         </div>
         <div className="nav-caption">MENU PRINCIPAL</div>
         <nav aria-label="Navegação principal">
           {nav
             .filter(
               (item) =>
-                item.to !== '/settings' || (user && can(user.role, 'settings')),
+                item.to !== '/settings' || can(user.nivelAcesso, 'settings'),
             )
             .map((item) => (
               <NavLink
@@ -97,11 +69,10 @@ export function Layout() {
                 className={({ isActive }) =>
                   `nav-item ${isActive ? 'active' : ''}`
                 }
-                title={item.label}
               >
                 <item.icon size={19} />
                 <span>{item.label}</span>
-                {item.to === '/alerts' && unresolved > 0 && <b>{unresolved}</b>}
+                {item.to === '/alerts' && active > 0 && <b>{active}</b>}
               </NavLink>
             ))}
         </nav>
@@ -109,119 +80,65 @@ export function Layout() {
           <div className="demo-info">
             <span className="demo-pulse" />
             <span>
-              Ambiente demonstrativo
-              <small>Dados simulados · sem controle real</small>
+              API SmartTraffic
+              <small>Dados registrados · sem controle de sinais</small>
             </span>
           </div>
-          <button
-            className="collapse-button"
-            onClick={() => setCollapsed(!collapsed)}
-            aria-label={collapsed ? 'Expandir menu' : 'Recolher menu'}
-          >
-            {collapsed ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
-            <span>{collapsed ? '' : 'Recolher menu'}</span>
-          </button>
         </div>
       </aside>
-      {mobile && (
-        <button
-          className="mobile-backdrop"
-          aria-label="Fechar menu"
-          onClick={() => setMobile(false)}
-        />
-      )}
       <div className="main-area">
         <header className="topbar">
           <div className="topbar-left">
             <button
               className="mobile-menu icon-button"
-              onClick={() => setMobile(true)}
-              aria-label="Abrir menu"
+              onClick={() => setMobile(!mobile)}
             >
-              <Menu size={21} />
+              ☰
             </button>
             <div>
-              <div className="breadcrumb">
-                Plataforma <ChevronRight size={13} />{' '}
-                {active?.label || 'Detalhes'}
-              </div>
-              <h1>{active?.label || 'SmartTraffic'}</h1>
+              <div className="breadcrumb">SmartTraffic</div>
+              <h1>Painel operacional</h1>
             </div>
           </div>
           <div className="topbar-actions">
-            <span className="connection">
-              <span className="connection-dot" />{' '}
-              {paused
-                ? 'Simulação pausada'
-                : scenario === 'offline'
-                  ? 'Comunicação simulada offline'
-                  : 'Simulação ativa'}
-            </span>
             <button
               className="icon-button"
-              onClick={() =>
-                setPreferences({
-                  theme: preferences.theme === 'light' ? 'dark' : 'light',
-                })
-              }
               aria-label="Alternar tema"
+              onClick={() => {
+                const next = theme === 'light' ? 'dark' : 'light';
+                setTheme(next);
+                localStorage.setItem('st-theme', next);
+              }}
             >
-              {preferences.theme === 'light' ? (
-                <Moon size={19} />
-              ) : (
-                <Sun size={19} />
-              )}
+              {theme === 'light' ? <Moon size={19} /> : <Sun size={19} />}
             </button>
             <button
               className="icon-button bell"
-              onClick={() => navigate('/alerts')}
               aria-label="Ver alertas"
+              onClick={() => navigate('/alerts')}
             >
               <Bell size={19} />
-              {preferences.notifications && unresolved > 0 && <i />}
             </button>
-            <div className="user-menu">
-              <button
-                className="user-trigger"
-                onClick={() => setUserOpen(!userOpen)}
-                aria-expanded={userOpen}
-              >
-                <span className="avatar">{user?.name[0]}</span>
-                <span className="user-label">
-                  <strong>{user?.name}</strong>
-                  <small>{user?.role}</small>
-                </span>
-                <ChevronDown size={15} />
-              </button>
-              {userOpen && (
-                <div className="user-popover">
-                  {user && can(user.role, 'settings') && (
-                    <button
-                      onClick={() => {
-                        navigate('/settings');
-                        setUserOpen(false);
-                      }}
-                    >
-                      <Settings size={16} /> Preferências
-                    </button>
-                  )}
-                  <button
-                    onClick={() => {
-                      setUser(null);
-                      navigate('/login');
-                    }}
-                  >
-                    <CircleHelp size={16} /> Sair da demonstração
-                  </button>
-                </div>
-              )}
-            </div>
+            <span className="user-label">
+              <strong>{user.nome}</strong>
+              <small>{user.nivelAcesso}</small>
+            </span>
+            <button
+              className="icon-button"
+              aria-label="Sair"
+              onClick={() => {
+                session.clear();
+                navigate('/login');
+              }}
+            >
+              <LogOut size={19} />
+            </button>
           </div>
         </header>
         <main className="content">
           <div className="demo-banner">
-            <span>AMBIENTE DE DEMONSTRAÇÃO</span> Todos os dados exibidos são
-            fictícios e não representam telemetria real.
+            <span>DADOS DA API</span> Fases semafóricas informadas; a plataforma
+            não comanda equipamentos.
           </div>
           <Outlet />
         </main>
@@ -229,14 +146,6 @@ export function Layout() {
           SmartTraffic · Monitoramento de infraestrutura urbana{' '}
           <span>Protótipo acadêmico · Registro, SP</span>
         </footer>
-        {toast && (
-          <div className="toast" role="status">
-            {toast}
-            <button onClick={clearToast} aria-label="Fechar mensagem">
-              <X size={14} />
-            </button>
-          </div>
-        )}
       </div>
     </div>
   );
@@ -261,21 +170,5 @@ export function PageHeader({
       </div>
       {action && <div className="page-actions">{action}</div>}
     </div>
-  );
-}
-export function PermissionNote() {
-  return (
-    <div className="permission-note">
-      Esta ação altera apenas os dados locais desta demonstração. Nenhum
-      equipamento recebe comandos.
-    </div>
-  );
-}
-export function BackButton() {
-  const navigate = useNavigate();
-  return (
-    <Button variant="ghost" onClick={() => navigate(-1)}>
-      ← Voltar
-    </Button>
   );
 }
