@@ -44,6 +44,17 @@ const recent = (days: number) =>
 const message = (error: unknown) =>
   error instanceof Error ? error.message : 'Falha ao consultar a API.';
 const number = (value: number) => value.toLocaleString('pt-BR');
+type LocalTrafficStatus = {
+  fase: string | null;
+  tempo_restante: number | null;
+  sinais: Record<'A' | 'B', 'vermelho' | 'amarelo' | 'verde' | null>;
+  estrategia: string;
+  prioridade_via: 'A' | 'B' | null;
+  demanda_por_via: Record<'A' | 'B', boolean>;
+  veiculos_parados_por_via: Record<'A' | 'B', number>;
+  espera_mais_antiga_por_via_seg: Record<'A' | 'B', number>;
+  arduino_conectado: boolean;
+};
 function State({
   loading,
   error,
@@ -511,6 +522,17 @@ export function CameraPage() {
   const telemetry = useTelemetry({ pagina: 1, limite: 100 });
   const streamBase = import.meta.env.VITE_CAMERA_STREAM_URL || 'http://localhost:5000/video_feed';
   const streamUrls = { A: streamBase.replace(/\/$/, '') + '/A', B: streamBase.replace(/\/$/, '') + '/B' };
+  const statusUrl = streamBase.replace(/\/video_feed(?:\/[AB])?\/?$/, '').replace(/\/$/, '') + '/status';
+  const trafficStatus = useQuery<LocalTrafficStatus>({
+    queryKey: ['local-traffic-status', statusUrl],
+    queryFn: async () => {
+      const response = await fetch(statusUrl);
+      if (!response.ok) throw new Error(`Controlador local indisponível (${response.status}).`);
+      return response.json() as Promise<LocalTrafficStatus>;
+    },
+    refetchInterval: 1000,
+    retry: false,
+  });
   const roadMap = new Map((roads.data || []).map((road) => [road.codigo, road]));
   const readings = { A: readingA.data?.dados[0], B: readingB.data?.dados[0] };
   const cameras = {
@@ -518,6 +540,29 @@ export function CameraPage() {
     B: devices.data?.find((item) => item.tipo === 'CAMERA' && item.viaId === roadMap.get('B')?.id),
   };
   const now = Date.now();
+  const liveControl = trafficStatus.data?.arduino_conectado ? trafficStatus.data : null;
+  const priorityRoad = liveControl?.prioridade_via;
+  const countA = liveControl?.veiculos_parados_por_via.A ?? 0;
+  const countB = liveControl?.veiculos_parados_por_via.B ?? 0;
+  const waitA = liveControl?.espera_mais_antiga_por_via_seg.A ?? 0;
+  const waitB = liveControl?.espera_mais_antiga_por_via_seg.B ?? 0;
+  let priorityReason = 'Sem prioridade ativa · tempos adaptados às leituras das vias.';
+  if (priorityRoad) {
+    const otherRoad = priorityRoad === 'A' ? 'B' : 'A';
+    const priorityCount = priorityRoad === 'A' ? countA : countB;
+    const otherCount = priorityRoad === 'A' ? countB : countA;
+    const priorityWait = priorityRoad === 'A' ? waitA : waitB;
+    const otherWait = priorityRoad === 'A' ? waitB : waitA;
+    if (liveControl?.demanda_por_via[priorityRoad] && !liveControl?.demanda_por_via[otherRoad]) {
+      priorityReason = `Veículos parados aguardando somente na Via ${priorityRoad}.`;
+    } else if (priorityCount !== otherCount) {
+      priorityReason = `Mais veículos parados na Via ${priorityRoad} (${priorityCount} × ${otherCount}).`;
+    } else if (priorityWait !== otherWait) {
+      priorityReason = `Mesmo número de veículos; maior tempo de espera na Via ${priorityRoad}.`;
+    } else {
+      priorityReason = `Empate nas duas vias; critério de desempate favoreceu a Via ${priorityRoad}.`;
+    }
+  }
   return (
     <section className="camera-monitor-page" ref={pageRef}>
       <header className="camera-monitor-header">
@@ -528,6 +573,25 @@ export function CameraPage() {
           {fullscreen ? 'Sair da tela cheia' : 'Tela cheia'}
         </button>
       </header>
+      <section className="camera-signal-summary" aria-label="Estado e prioridade dos semáforos">
+        {(['A', 'B'] as const).map((road) => {
+          const color = liveControl?.sinais[road] || null;
+          return (
+            <div className="camera-signal-state" key={road}>
+              <span className={`camera-signal-indicator${color ? ` is-${color}` : ''}`} />
+              <div><small>VIA {road}</small><strong>{color ? color.toUpperCase() : 'SEM ESTADO'}</strong></div>
+            </div>
+          );
+        })}
+        <div className="camera-cycle-time">
+          <small>{liveControl?.fase === 'ALL_RED' ? 'TRANSIÇÃO SEGURA' : 'PRÓXIMA ALTERAÇÃO'}</small>
+          <strong>{liveControl?.tempo_restante != null ? `${liveControl.tempo_restante.toFixed(0)} s` : '—'}</strong>
+        </div>
+        <div className="camera-priority-reason">
+          <small>{priorityRoad ? `PRIORIDADE · VIA ${priorityRoad}` : 'DECISÃO DO CONTROLADOR'}</small>
+          <strong>{liveControl ? priorityReason : trafficStatus.isError ? 'Controlador local sem resposta' : 'Aguardando estado do controlador'}</strong>
+        </div>
+      </section>
       <div className="camera-monitor-grid">
         {(['A', 'B'] as const).map((road) => {
           const latest = readings[road];

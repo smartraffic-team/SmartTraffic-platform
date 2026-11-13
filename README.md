@@ -13,7 +13,7 @@ npm.cmd ci
 npm.cmd run dev
 ```
 
-`VITE_API_URL` deve apontar para a API incluindo `/api/v1`. `VITE_CAMERA_STREAM_URL` e a base do stream Flask; localmente use `http://localhost:5000/video_feed`. A tela Cameras e deteccoes deriva `/A` e `/B` para obter os dois streams independentes. Em outro computador, configure o IP/host da maquina Flask; em hospedagem HTTPS, disponibilize os streams tambem por HTTPS. Reinicie Vite apos alterar variaveis `.env`. Nunca coloque `DATABASE_URL`, `JWT_SECRET` ou `INGESTION_KEY` em variaveis `VITE_*`.
+`VITE_API_URL` deve apontar para a API incluindo `/api/v1`. `VITE_CAMERA_STREAM_URL` e a base do stream Flask; localmente use `http://localhost:5000/video_feed`. A tela Cameras e deteccoes deriva `/A` e `/B` para obter os dois streams independentes e consulta `/status` no mesmo servidor Flask para exibir as cores, o tempo estimado até a próxima alteração e o motivo da prioridade. Em outro computador, configure o IP/host da maquina Flask; em hospedagem HTTPS, disponibilize os streams e o status tambem por HTTPS. Reinicie Vite apos alterar variaveis `.env`. Nunca coloque `DATABASE_URL`, `JWT_SECRET` ou `INGESTION_KEY` em variaveis `VITE_*`.
 
 Abra a URL exibida pelo Vite (normalmente `http://localhost:5173`) e entre com e-mail e senha de um usuário ativo cadastrado na API. A sessão JWT fica no `sessionStorage` da aba, é validada com `/auth/me` na recarga e expira conforme o tempo informado pela API (uma hora). Não há renovação automática: após expirar, entre novamente. O login é real; perfis são `ADMINISTRADOR`, `OPERADOR` e `VISUALIZADOR`.
 

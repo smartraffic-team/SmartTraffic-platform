@@ -821,6 +821,19 @@ select:focus-visible {
 .camera-monitor-location strong { font-size: 13px; }
 .camera-fullscreen-button { display: flex; align-items: center; justify-content: center; gap: 8px; border: 1px solid #34404e; border-radius: 8px; padding: 9px 12px; color: var(--monitor-ink); background: #171e28; cursor: pointer; font: inherit; font-size: 11px; }
 .camera-fullscreen-button:hover { background: #252e3a; }
+.camera-signal-summary { display: grid; grid-template-columns: minmax(120px, .8fr) minmax(120px, .8fr) minmax(150px, .9fr) minmax(260px, 2fr); align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid #28313d; border-radius: 10px; background: #111822; }
+.camera-signal-state { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.camera-signal-state > div,.camera-cycle-time,.camera-priority-reason { display: grid; gap: 4px; min-width: 0; }
+.camera-signal-state small,.camera-cycle-time small,.camera-priority-reason small { color: var(--monitor-muted); font-size: 9px; font-weight: 800; letter-spacing: .1em; }
+.camera-signal-state strong { color: var(--monitor-ink); font-size: 11px; }
+.camera-signal-indicator { width: 14px; height: 14px; flex: 0 0 auto; border: 1px solid #657181; border-radius: 50%; background: #222b36; }
+.camera-signal-indicator.is-vermelho { border-color: #ff7171; background: #f34d52; box-shadow: 0 0 12px #f34d5266; }
+.camera-signal-indicator.is-amarelo { border-color: #ffd867; background: #ffca3a; box-shadow: 0 0 12px #ffca3a66; }
+.camera-signal-indicator.is-verde { border-color: #6ae5a2; background: #3acb7a; box-shadow: 0 0 12px #3acb7a66; }
+.camera-cycle-time { padding-left: 14px; border-left: 1px solid #ffffff1c; }
+.camera-cycle-time strong { color: #fbc117; font-variant-numeric: tabular-nums; font-size: 19px; line-height: 1; }
+.camera-priority-reason { padding-left: 14px; border-left: 1px solid #ffffff1c; }
+.camera-priority-reason strong { overflow: hidden; color: #e4eaf0; font-size: 11px; font-weight: 600; text-overflow: ellipsis; }
 .camera-monitor-feed { position: relative; flex: 1; min-height: 350px; overflow: hidden; display: grid; place-items: center; border: 1px solid #28313d; border-radius: 10px; background: #05080c; }
 .camera-monitor-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; flex: 1; min-height: 0; }
 .camera-monitor-grid .camera-monitor-feed { min-width: 0; min-height: 300px; }
@@ -1605,6 +1618,9 @@ td small {
   .intersection-profile-card h3 { font-size: 20px; }
   .crossing-signal-panel { padding: 16px; }
   .camera-monitor-page { min-height: calc(100vh - 155px); padding: 10px; }
+  .camera-signal-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .camera-cycle-time,.camera-priority-reason { padding-left: 0; border-left: 0; }
+  .camera-priority-reason { grid-column: 1 / -1; padding-top: 8px; border-top: 1px solid #ffffff1c; }
   .camera-monitor-location { display: none; }
   .camera-monitor-feed { min-height: 300px; }
   .camera-monitor-grid { grid-template-columns: 1fr; }
