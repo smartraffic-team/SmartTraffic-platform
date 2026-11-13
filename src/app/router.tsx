@@ -5,6 +5,7 @@ import { Layout } from './Layout';
 import { LoginPage } from '../features/auth';
 import {
   AlertsPage,
+  CameraPage,
   DashboardPage,
   DevicesPage,
   DeviceDetailPage,
@@ -65,6 +66,7 @@ export function AppRouter() {
         }
       >
         <Route path="/dashboard" element={<DashboardPage />} />
+        <Route path="/camera" element={<CameraPage />} />
         <Route path="/intersections" element={<IntersectionsPage />} />
         <Route path="/intersections/:id" element={<IntersectionDetailPage />} />
         <Route path="/devices" element={<DevicesPage />} />

@@ -13,7 +13,7 @@ npm.cmd ci
 npm.cmd run dev
 ```
 
-`VITE_API_URL` deve apontar para a API incluindo `/api/v1`. O navegador só recebe essa URL pública. Nunca coloque `DATABASE_URL`, `JWT_SECRET` ou `INGESTION_KEY` em variáveis `VITE_*`.
+`VITE_API_URL` deve apontar para a API incluindo `/api/v1`. `VITE_CAMERA_STREAM_URL` e a base do stream Flask; localmente use `http://localhost:5000/video_feed`. A tela Cameras e deteccoes deriva `/A` e `/B` para obter os dois streams independentes. Em outro computador, configure o IP/host da maquina Flask; em hospedagem HTTPS, disponibilize os streams tambem por HTTPS. Reinicie Vite apos alterar variaveis `.env`. Nunca coloque `DATABASE_URL`, `JWT_SECRET` ou `INGESTION_KEY` em variaveis `VITE_*`.
 
 Abra a URL exibida pelo Vite (normalmente `http://localhost:5173`) e entre com e-mail e senha de um usuário ativo cadastrado na API. A sessão JWT fica no `sessionStorage` da aba, é validada com `/auth/me` na recarga e expira conforme o tempo informado pela API (uma hora). Não há renovação automática: após expirar, entre novamente. O login é real; perfis são `ADMINISTRADOR`, `OPERADOR` e `VISUALIZADOR`.
 
@@ -21,7 +21,8 @@ Abra a URL exibida pelo Vite (normalmente `http://localhost:5173`) e entre com e
 
 | Tela | Rotas da API |
 |---|---|
-| Visão geral | `/dashboard/resumo`, `/cruzamento`, `/vias`, `/semaforos`, `/leituras`, `/alertas` |
+| Cameras e deteccoes | Streams Flask (`/video_feed/A`, `/video_feed/B`), `/dispositivos`, `/telemetria`, `/leituras` |
+| Visão geral | `/dashboard/resumo`, `/cruzamento`, `/vias`, `/semaforos`, `/dispositivos`, `/telemetria`, `/leituras`, `/alertas` |
 | Cruzamento | `/cruzamento`, `/vias`, `/semaforos`, `/dispositivos`, `/historico-fases` |
 | Dispositivos | `/dispositivos`, `/dispositivos/:id`, `/telemetria`, `/alertas` |
 | Fluxo | `/leituras` com tipo, via, período e paginação |
@@ -34,6 +35,8 @@ O frontend envia `Authorization: Bearer` nas consultas. Ações de dispositivo e
 ## Limitações dos dados
 
 - `leiturasRegistradas` conta registros, não veículos. Leituras `QUADRO` e `AGREGADA` aparecem separadas; o painel não soma ambas.
+- A Visão geral usa amostras `QUADRO` recentes da Via A. Uma contagem só aparece como atual quando a leitura e a telemetria da câmera estão recentes e a câmera reporta `ONLINE`. A via sem câmera associada aparece sem medição. Leituras com mais de 20 s, telemetria com mais de 45 s e fases com mais de 45 s são identificadas como antigas.
+- O gráfico de quadros mostra até 20 amostras recentes; os mesmos veículos podem aparecer em vários quadros. A soma das detecções não representa veículos únicos nem fluxo acumulado.
 - Gráficos e CSV de leituras usam somente a página carregada (até 50 registros no fluxo e relatórios; 100 na visão geral). O total de registros do filtro vem da API. Para totais e séries completos em períodos grandes, a API precisa de endpoints agregados.
 - Telemetria e alertas relacionados a um dispositivo são procurados entre os 100 registros recentes carregados; podem existir registros mais antigos fora desse recorte.
 - Fases exibidas são estados informados à API; não comprovam acionamento físico. Não há tempo restante de fase no contrato atual.

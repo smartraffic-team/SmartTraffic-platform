@@ -14,7 +14,7 @@ export const useSignals = () =>
   useQuery({
     queryKey: ['signals'],
     queryFn: api.signals,
-    refetchInterval: 10000,
+    refetchInterval: 2000,
   });
 export const useDevices = () =>
   useQuery({
@@ -28,10 +28,12 @@ export const useReadings = (
     tipoLeitura?: string;
     dispositivoId?: string;
   } = {},
+  refetchInterval?: number,
 ) =>
   useQuery({
     queryKey: ['readings', params],
     queryFn: () => api.readings(params),
+    refetchInterval,
   });
 export const useAlerts = (params: PeriodQuery = {}) =>
   useQuery({

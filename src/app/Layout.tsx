@@ -3,6 +3,7 @@ import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import {
   Activity,
   Bell,
+  Camera,
   Cpu,
   FileBarChart2,
   LayoutDashboard,
@@ -20,6 +21,7 @@ import { session } from '../services/http';
 import type { User } from '../types';
 const nav = [
   { to: '/dashboard', label: 'Visão geral', icon: LayoutDashboard },
+  { to: '/camera', label: 'Câmera e detecções', icon: Camera },
   { to: '/intersections', label: 'Cruzamento', icon: TrafficCone },
   { to: '/devices', label: 'Dispositivos', icon: Cpu },
   { to: '/traffic', label: 'Fluxo', icon: Activity },
@@ -76,15 +78,6 @@ export function Layout({ user }: { user: User }) {
               </NavLink>
             ))}
         </nav>
-        <div className="sidebar-bottom">
-          <div className="demo-info">
-            <span className="demo-pulse" />
-            <span>
-              API SmartTraffic
-              <small>Dados registrados · sem controle de sinais</small>
-            </span>
-          </div>
-        </div>
       </aside>
       <div className="main-area">
         <header className="topbar">
@@ -136,10 +129,6 @@ export function Layout({ user }: { user: User }) {
           </div>
         </header>
         <main className="content">
-          <div className="demo-banner">
-            <span>DADOS DA API</span> Fases semafóricas informadas; a plataforma
-            não comanda equipamentos.
-          </div>
           <Outlet />
         </main>
         <footer className="footer">

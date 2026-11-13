@@ -1,6 +1,7 @@
-import { useMemo, useState, type FormEvent, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Maximize2, Minimize2 } from 'lucide-react';
 import {
   Bar,
   BarChart,
@@ -36,7 +37,7 @@ import { can } from '../lib/permissions';
 import { csvDownload, dateTime } from '../lib/utils';
 import { session } from '../services/http';
 import { api } from '../services/provider';
-import type { Alert, Device, Page, Reading } from '../types';
+import type { Alert, Crossing, Device, Page, Reading, Road, Signal } from '../types';
 
 const recent = (days: number) =>
   new Date(Date.now() - days * 86400000).toISOString();
@@ -65,13 +66,15 @@ function Metric({
   label,
   value,
   detail,
+  tone,
 }: {
   label: string;
   value: string | number;
   detail?: string;
+  tone?: 'navy' | 'yellow' | 'green' | 'red' | 'blue' | 'violet';
 }) {
   return (
-    <Card className="stat-card">
+    <Card className={`stat-card${tone ? ` stat-card--${tone}` : ''}`}>
       <span className="stat-title">{label}</span>
       <strong>{value}</strong>
       {detail && <small>{detail}</small>}
@@ -132,6 +135,42 @@ function DateFilter({
   );
 }
 function ReadingChart({ rows }: { rows: Reading[] }) {
+  if (rows[0]?.tipoLeitura === 'QUADRO') {
+    const samples = rows
+      .slice()
+      .reverse()
+      .slice(-20)
+      .map((row) => ({
+        horario: dateTime(row.registradoEm),
+        carros: row.carrosDetectados,
+        pedestres: row.pedestresDetectados,
+      }));
+    return (
+      <Card className="chart-card">
+        <h3>Contagem por quadro</h3>
+        <p className="chart-caption">
+          Até 20 amostras recentes; o mesmo objeto pode aparecer em vários quadros.
+        </p>
+        {samples.length ? (
+          <div style={{ width: '100%', height: 260 }}>
+            <ResponsiveContainer>
+              <BarChart data={samples}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="horario" hide />
+                <YAxis allowDecimals={false} />
+                <Tooltip />
+                <Legend />
+                <Bar dataKey="carros" name="Carros neste quadro" fill="#FBC117" />
+                <Bar dataKey="pedestres" name="Pessoas neste quadro" fill="#181C2B" />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        ) : (
+          <Empty />
+        )}
+      </Card>
+    );
+  }
   const byDay = new Map<
     string,
     { dia: string; carros: number; pedestres: number }
@@ -222,111 +261,210 @@ function ReadingTable({
   );
 }
 function Status({ value }: { value: string }) {
+  const tone =
+    value === 'ONLINE' || value === 'RESOLVIDO' || value === 'VERDE'
+      ? 'success'
+      : value === 'OFFLINE' || value === 'CRITICO' || value === 'VERMELHO'
+        ? 'danger'
+        : value === 'DESCONHECIDA'
+          ? 'neutral'
+          : value === 'AMARELO'
+            ? 'warning'
+            : value === 'ADAPTATIVO' || value === 'FIXO' || value === 'MANUAL'
+              ? 'info'
+              : 'warning';
   return (
-    <Badge
-      tone={
-        value === 'ONLINE' || value === 'RESOLVIDO'
-          ? 'success'
-          : value === 'OFFLINE' || value === 'CRITICO'
-            ? 'danger'
-            : 'warning'
-      }
-    >
-      {value}
-    </Badge>
+    <Badge tone={tone}>{value}</Badge>
+  );
+}
+
+function CrossingSignalPanel({
+  crossing,
+  roads,
+  signals,
+}: {
+  crossing?: Crossing;
+  roads: Road[];
+  signals: Signal[];
+}) {
+  const [clock, setClock] = useState(Date.now());
+  useEffect(() => {
+    const interval = window.setInterval(() => setClock(Date.now()), 2000);
+    return () => window.clearInterval(interval);
+  }, []);
+  const signalByRoad = new Map(signals.map((signal) => [signal.viaId, signal]));
+  return (
+    <Card className="crossing-signal-panel">
+      <div className="crossing-panel-heading">
+        <div>
+          <span className="crossing-kicker">ESTADO DOS SEMÁFOROS</span>
+          <h3>{crossing?.codigo || 'Cruzamento'} · {crossing?.nome || 'Aguardando cadastro'}</h3>
+        </div>
+        <Badge tone={crossing?.ativo ? 'success' : 'warning'}>
+          {crossing?.ativo ? 'ATIVO' : 'SEM ESTADO'}
+        </Badge>
+      </div>
+      <div className="crossing-signals-grid">
+        {roads.map((road) => {
+          const signal = signalByRoad.get(road.id);
+          const age = signal ? clock - Date.parse(signal.atualizadoEm) : Infinity;
+          const fresh = age >= 0 && age <= 45000 && signal?.corAtual !== 'DESCONHECIDA';
+          const color = fresh ? signal!.corAtual.toLowerCase() : 'indisponivel';
+          return (
+            <article className="crossing-signal-card" key={road.id}>
+              <div className="traffic-light-visual" aria-label={fresh ? `Sinal ${color}` : 'Estado indisponível'}>
+                {(['vermelho', 'amarelo', 'verde'] as const).map((lamp) => (
+                  <span key={lamp} className={`traffic-light-lamp traffic-light-lamp--${lamp}${color === lamp ? ' is-on' : ''}`} />
+                ))}
+              </div>
+              <div className="crossing-signal-copy">
+                <span className="crossing-kicker">SEMÁFORO {road.codigo}</span>
+                <h4>{road.nome || `Via ${road.codigo}`}</h4>
+                <Status value={fresh ? signal!.corAtual : 'DESCONHECIDA'} />
+                <small>{signal ? `Atualizado ${dateTime(signal.atualizadoEm)}` : 'Aguardando estado do controlador'}</small>
+              </div>
+            </article>
+          );
+        })}
+      </div>
+    </Card>
   );
 }
 
 export function DashboardPage() {
-  const [days, setDays] = useState('7');
-  const inicio = useMemo(() => recent(Number(days)), [days]);
+  const [periodAnchor, setPeriodAnchor] = useState(Date.now());
+  useEffect(() => {
+    const interval = window.setInterval(() => setPeriodAnchor(Date.now()), 60000);
+    return () => window.clearInterval(interval);
+  }, []);
+  const inicio = useMemo(
+    () => new Date(periodAnchor - 86400000).toISOString(),
+    [periodAnchor],
+  );
   const summary = useSummary({ inicio });
   const crossing = useCrossing();
   const roads = useRoads();
   const signals = useSignals();
-  const readings = useReadings({
-    inicio,
-    tipoLeitura: 'AGREGADA',
-    pagina: 1,
-    limite: 100,
-  });
-  const alerts = useAlerts({ pagina: 1, limite: 5 });
-  const roadMap = new Map(
-    (roads.data || []).map((road) => [road.id, road.codigo]),
+  const devices = useDevices();
+  const telemetry = useTelemetry({ pagina: 1, limite: 100, inicio });
+  const latestA = useReadings(
+    { via: 'A', tipoLeitura: 'QUADRO', pagina: 1, limite: 1 }, 1200,
   );
+  const latestB = useReadings(
+    { via: 'B', tipoLeitura: 'QUADRO', pagina: 1, limite: 1 }, 1200,
+  );
+  const alerts = useAlerts({ pagina: 1, limite: 5, inicio });
+  const latestTelemetry = new Map<
+    string,
+    NonNullable<typeof telemetry.data>['dados'][number]
+  >();
+  for (const item of telemetry.data?.dados || [])
+    if (!latestTelemetry.has(item.dispositivoId))
+      latestTelemetry.set(item.dispositivoId, item);
+  const latestReadingByRoad = new Map<string, Reading | undefined>([
+    ['A', latestA.data?.dados[0]],
+    ['B', latestB.data?.dados[0]],
+  ]);
+  const now = Date.now();
   return (
     <>
       <PageHeader
         eyebrow="CENTRO DE OPERAÇÕES"
         title="Visão geral"
         description="Registros do cruzamento SmartTraffic e estado informado pela API."
-        action={<DateFilter days={days} setDays={setDays} />}
+        action={<Badge tone="info">ÚLTIMAS 24 HORAS</Badge>}
       />
       <State
         loading={summary.isLoading || crossing.isLoading}
         error={summary.error || crossing.error}
       >
-        <div className="stats-grid">
+        <div className="stats-grid dashboard-stat-grid">
           <Metric
             label="Cruzamentos cadastrados"
             value={crossing.data ? 1 : 0}
+            tone="navy"
           />
           <Metric
             label="Dispositivos online"
             value={summary.data?.dispositivosOnline ?? '—'}
+            tone="green"
           />
           <Metric
             label="Dispositivos offline"
             value={summary.data?.dispositivosOffline ?? '—'}
+            tone="red"
           />
           <Metric
             label="Leituras registradas"
             value={summary.data?.leiturasRegistradas ?? '—'}
-            detail={`Últimos ${days} dia(s); QUADRO e AGREGADA`}
+            detail="Recebidas nas últimas 24 horas"
+            tone="yellow"
           />
           <Metric
             label="Alertas ativos"
             value={summary.data?.alertasAtivos ?? '—'}
+            tone="violet"
           />
           <Metric
             label="Semáforos cadastrados"
             value={summary.data?.semaforos.length ?? '—'}
+            tone="blue"
           />
         </div>
       </State>
-      <div className="chart-grid">
-        <State loading={readings.isLoading} error={readings.error}>
-          <ReadingChart rows={readings.data?.dados || []} />
-        </State>
-        <Card className="chart-card">
-          <h3>Fases informadas</h3>
-          <State loading={signals.isLoading} error={signals.error}>
-            {signals.data?.length ? (
-              <div className="info-list">
-                {signals.data.map((signal) => (
-                  <div key={signal.id}>
-                    <dt>
-                      Via{' '}
-                      {signal.vias?.codigo ||
-                        roadMap.get(signal.viaId) ||
-                        signal.viaId}
-                    </dt>
-                    <dd>
-                      <Status value={signal.corAtual} />{' '}
-                      <small>{dateTime(signal.atualizadoEm)}</small>
-                    </dd>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <Empty />
-            )}
-          </State>
+      <State
+        loading={roads.isLoading || devices.isLoading || telemetry.isLoading || latestA.isLoading || latestB.isLoading}
+        error={roads.error || devices.error || telemetry.error || latestA.error || latestB.error}
+      >
+        <Card className="table-card">
+          <h3>Últimas medições por via</h3>
           <p className="chart-caption">
-            Estado recebido pela API; não confirma acionamento elétrico.
+            Leituras instantâneas. Um valor antigo ou sem atualização não representa o fluxo atual.
           </p>
+          <div className="live-road-grid">
+            {(roads.data || []).map((road) => {
+              const reading = latestReadingByRoad.get(road.codigo);
+              const camera = devices.data?.find(
+                (device) => device.tipo === 'CAMERA' && device.viaId === road.id,
+              );
+              const cameraTelemetry = camera ? latestTelemetry.get(camera.id) : undefined;
+              const readingAge = reading ? now - Date.parse(reading.registradoEm) : Infinity;
+              const telemetryAge = cameraTelemetry ? now - Date.parse(cameraTelemetry.registradoEm) : Infinity;
+              const readingRecent = readingAge >= 0 && readingAge <= 5000;
+              const telemetryRecent = telemetryAge >= 0 && telemetryAge <= 45000;
+              const live = Boolean(readingRecent && telemetryRecent && cameraTelemetry?.status === 'ONLINE');
+              let state = 'Sem medição';
+              if (!camera) state = 'Sem câmera associada';
+              else if (!telemetryRecent) state = 'Estado da câmera desatualizado';
+              else if (cameraTelemetry?.status === 'OFFLINE') state = 'Câmera offline';
+              else if (cameraTelemetry?.status === 'ALERTA') state = 'Detecção indisponível';
+              else if (live) state = 'Atualizada';
+              else if (reading) state = 'Última leitura antiga';
+              const stateTone = live ? 'success' : cameraTelemetry?.status === 'OFFLINE' ? 'danger' : 'warning';
+              return (
+                <div className="live-road-card" key={road.id}>
+                  <div className="section-title">
+                    <h4>Via {road.codigo}</h4>
+                    <Badge tone={stateTone}>{state}</Badge>
+                  </div>
+                  <p className="live-counts">
+                    Carros: {live && reading ? number(reading.carrosDetectados) : '—'}
+                    {' · '}Pessoas: {live && reading ? number(reading.pedestresDetectados) : '—'}
+                  </p>
+                  <small>
+                    {reading ? `Último quadro: ${dateTime(reading.registradoEm)}` : 'Nenhuma leitura recebida desta via.'}
+                    {camera && <> · Câmera: {camera.nome}</>}
+                  </small>
+                </div>
+              );
+            })}
+          </div>
         </Card>
-      </div>
+      </State>
+      <State loading={crossing.isLoading || roads.isLoading || signals.isLoading}
+        error={crossing.error || roads.error || signals.error}>
+        <CrossingSignalPanel crossing={crossing.data} roads={roads.data || []} signals={signals.data || []} />
+      </State>
       <Card className="table-card">
         <h3>Alertas recentes</h3>
         <State loading={alerts.isLoading} error={alerts.error}>
@@ -353,12 +491,75 @@ export function DashboardPage() {
           )}
         </State>
       </Card>
-      <p className="subtle">
-        O gráfico usa até 100 leituras AGREGADA da primeira página (
-        {readings.data?.total ?? 0} no período). Contagens por quadro e
-        agregadas não são somadas.
-      </p>
     </>
+  );
+}
+
+export function CameraPage() {
+  const [streamReady, setStreamReady] = useState({ A: false, B: false });
+  const [fullscreen, setFullscreen] = useState(false);
+  const pageRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const update = () => setFullscreen(document.fullscreenElement === pageRef.current);
+    document.addEventListener('fullscreenchange', update);
+    return () => document.removeEventListener('fullscreenchange', update);
+  }, []);
+  const readingA = useReadings({ via: 'A', tipoLeitura: 'QUADRO', pagina: 1, limite: 1 }, 1200);
+  const readingB = useReadings({ via: 'B', tipoLeitura: 'QUADRO', pagina: 1, limite: 1 }, 1200);
+  const roads = useRoads();
+  const devices = useDevices();
+  const telemetry = useTelemetry({ pagina: 1, limite: 100 });
+  const streamBase = import.meta.env.VITE_CAMERA_STREAM_URL || 'http://localhost:5000/video_feed';
+  const streamUrls = { A: streamBase.replace(/\/$/, '') + '/A', B: streamBase.replace(/\/$/, '') + '/B' };
+  const roadMap = new Map((roads.data || []).map((road) => [road.codigo, road]));
+  const readings = { A: readingA.data?.dados[0], B: readingB.data?.dados[0] };
+  const cameras = {
+    A: devices.data?.find((item) => item.tipo === 'CAMERA' && item.viaId === roadMap.get('A')?.id),
+    B: devices.data?.find((item) => item.tipo === 'CAMERA' && item.viaId === roadMap.get('B')?.id),
+  };
+  const now = Date.now();
+  return (
+    <section className="camera-monitor-page" ref={pageRef}>
+      <header className="camera-monitor-header">
+        <div className="camera-monitor-brand"><span className="camera-monitor-mark">ST</span><div><strong>SmartTraffic</strong><small>MONITORAMENTO AO VIVO</small></div></div>
+        <div className="camera-monitor-location"><span>CRUZAMENTO</span><strong>Vias A e B</strong></div>
+        <button className="camera-fullscreen-button" onClick={() => fullscreen ? document.exitFullscreen() : pageRef.current?.requestFullscreen()}>
+          {fullscreen ? <Minimize2 size={17} /> : <Maximize2 size={17} />}
+          {fullscreen ? 'Sair da tela cheia' : 'Tela cheia'}
+        </button>
+      </header>
+      <div className="camera-monitor-grid">
+        {(['A', 'B'] as const).map((road) => {
+          const latest = readings[road];
+          const age = latest ? now - Date.parse(latest.registradoEm) : Infinity;
+          const fresh = age >= 0 && age <= 5000;
+          const camera = cameras[road];
+          const cameraTelemetry = telemetry.data?.dados.find((item) => item.dispositivoId === camera?.id);
+          const ready = streamReady[road];
+          const streamLabel = !ready ? 'SEM SINAL'
+            : cameraTelemetry?.status === 'OFFLINE' ? 'CAMERA OFFLINE'
+              : cameraTelemetry?.status === 'ALERTA' ? 'DETECCAO INDISPONIVEL'
+                : 'STREAM CONECTADO';
+          const streamOnline = ready && cameraTelemetry?.status !== 'OFFLINE';
+          const readQuery = road === 'A' ? readingA : readingB;
+          return (
+            <div className="camera-monitor-feed" key={road}>
+              <img src={streamUrls[road]} alt={'Camera ao vivo da Via ' + road} onLoad={() => setStreamReady((current) => ({ ...current, [road]: true }))} onError={() => setStreamReady((current) => ({ ...current, [road]: false }))} />
+              {!ready && <div className="camera-feed-placeholder">Stream indisponivel. Confira a camera da Via {road} e o Flask.</div>}
+              <div className="camera-feed-live"><span className={streamOnline ? 'camera-live-dot' : 'camera-live-dot offline'} />{streamLabel}<span className="camera-feed-via">VIA {road}</span></div>
+              <div className="camera-feed-name">{camera?.nome || 'Camera Via ' + road}{cameraTelemetry?.status ? ' · ' + cameraTelemetry.status : ''}</div>
+              <div className="camera-count-overlay">
+                <div><span>VEICULOS</span><strong>{fresh && latest ? number(latest.carrosDetectados) : '--'}</strong></div>
+                <i />
+                <div><span>PEDESTRES</span><strong>{fresh && latest ? number(latest.pedestresDetectados) : '--'}</strong></div>
+                <div className="camera-reading-state"><span className={fresh ? 'camera-live-dot' : 'camera-live-dot offline'} />{readQuery.isError ? 'API indisponivel' : fresh ? 'ATUALIZADO ' + dateTime(latest!.registradoEm) : 'AGUARDANDO LEITURA'}</div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      <footer className="camera-monitor-footer"><span>Deteccoes e confianca exibidas pelo modelo em cada stream</span><span>Leituras consultadas da API</span></footer>
+    </section>
   );
 }
 
@@ -371,46 +572,41 @@ export function IntersectionsPage() {
       <PageHeader
         eyebrow="INFRAESTRUTURA"
         title="Cruzamento"
-        description="A base V2.1 registra um cruzamento da maquete e duas vias."
+        description="Identificação do local, vias e estado atual dos semáforos."
       />
       <State
         loading={crossing.isLoading || roads.isLoading || signals.isLoading}
         error={crossing.error || roads.error || signals.error}
       >
-        <Card className="table-card">
-          <h3>
-            {crossing.data?.nome} · {crossing.data?.codigo}
-          </h3>
-          <p>{crossing.data?.descricao || 'Sem descrição cadastrada.'}</p>
-          <p>
-            Ambiente: {crossing.data?.ambiente} ·{' '}
-            {crossing.data?.ativo ? 'Ativo' : 'Inativo'}
-          </p>
-          <Link
-            className="text-link"
-            to={`/intersections/${crossing.data?.id}`}
-          >
-            Ver detalhes
-          </Link>
-        </Card>
-        <div className="detail-grid">
-          {roads.data?.map((road) => (
-            <Card key={road.id}>
-              <h3>
-                Via {road.codigo} · {road.nome}
-              </h3>
-              <p>{road.ativa ? 'Ativa' : 'Inativa'}</p>
-              {signals.data
-                ?.filter((signal) => signal.viaId === road.id)
-                .map((signal) => (
-                  <p key={signal.id}>
-                    Fase informada: <Status value={signal.corAtual} /> ·{' '}
-                    {dateTime(signal.atualizadoEm)}
-                  </p>
-                ))}
-            </Card>
-          ))}
+        <div className="intersection-overview-grid">
+          <Card className="intersection-profile-card">
+            <span className="crossing-kicker">LOCAL DE OPERAÇÃO</span>
+            <h3>{crossing.data?.nome || 'Cruzamento'}</h3>
+            <p>{crossing.data?.descricao || 'Cruzamento monitorado pelo SmartTraffic.'}</p>
+            <div className="intersection-meta-grid">
+              <div><span>CÓDIGO</span><strong>{crossing.data?.codigo || '—'}</strong></div>
+              <div><span>AMBIENTE</span><strong>{crossing.data?.ambiente || '—'}</strong></div>
+              <div><span>VIAS MONITORADAS</span><strong>{roads.data?.length ?? 0}</strong></div>
+              <div><span>CADASTRO</span><strong>{crossing.data?.ativo ? 'Ativo' : 'Inativo'}</strong></div>
+            </div>
+            <Link className="btn btn-primary intersection-details-link" to={`/intersections/${crossing.data?.id}`}>
+              Abrir detalhes do cruzamento
+            </Link>
+          </Card>
+          <CrossingSignalPanel crossing={crossing.data} roads={roads.data || []} signals={signals.data || []} />
         </div>
+        <section className="intersection-roads-section">
+          <div className="section-title"><h2>Vias deste cruzamento</h2><span>{roads.data?.length ?? 0} vias</span></div>
+          <div className="intersection-road-grid">
+            {(roads.data || []).map((road) => (
+              <article className="intersection-road-card" key={road.id}>
+                <span className="intersection-road-code">{road.codigo}</span>
+                <div><h3>Via {road.codigo}</h3><p>{road.nome}</p></div>
+                <Badge tone={road.ativa ? 'success' : 'neutral'}>{road.ativa ? 'ATIVA' : 'INATIVA'}</Badge>
+              </article>
+            ))}
+          </div>
+        </section>
       </State>
     </>
   );
@@ -429,7 +625,7 @@ export function IntersectionDetailPage() {
       <PageHeader
         eyebrow={crossing.data?.codigo}
         title={crossing.data?.nome || 'Cruzamento'}
-        description="Vias, dispositivos e histórico de fases informadas."
+        description="Semáforos, vias e dispositivos associados a este local."
       />
       <State
         loading={
@@ -447,33 +643,27 @@ export function IntersectionDetailPage() {
           phases.error
         }
       >
+        <CrossingSignalPanel crossing={crossing.data} roads={roads.data || []} signals={signals.data || []} />
         <div className="detail-grid">
-          <Card>
-            <h3>Vias e semáforos</h3>
-            {roads.data?.map((road) => (
-              <p key={road.id}>
-                Via {road.codigo} · {road.nome}:{' '}
-                {signals.data?.find((signal) => signal.viaId === road.id)
-                  ?.corAtual || 'Indisponível'}
-              </p>
-            ))}
-          </Card>
-          <Card>
-            <h3>Dispositivos</h3>
+          <Card className="intersection-detail-card">
+            <div className="section-title"><h2>Dispositivos</h2><span>{devices.data?.length ?? 0} cadastrados</span></div>
             {devices.data?.length ? (
-              devices.data.map((device) => (
-                <p key={device.id}>
-                  <Link to={`/devices/${device.id}`}>{device.nome}</Link> ·{' '}
-                  <Status value={device.status} />
-                </p>
-              ))
+              <div className="intersection-device-list">
+                {devices.data.map((device) => (
+                  <Link className="intersection-device-row" to={`/devices/${device.id}`} key={device.id}>
+                    <span className="intersection-device-mark">{device.tipo.slice(0, 1)}</span>
+                    <span><strong>{device.nome}</strong><small>{device.tipo} · {device.codigo}</small></span>
+                    <Status value={device.status} />
+                  </Link>
+                ))}
+              </div>
             ) : (
-              <Empty />
+              <Empty message="Nenhum dispositivo cadastrado neste cruzamento." />
             )}
           </Card>
         </div>
-        <Card className="table-card">
-          <h3>Histórico de fases</h3>
+        <Card className="table-card intersection-history-card">
+          <div className="section-title"><h2>Histórico de alterações dos semáforos</h2><span>20 registros recentes</span></div>
           {phases.data?.dados.length ? (
             <div className="table-wrap">
               <table>
@@ -883,13 +1073,13 @@ export function TrafficPage() {
         <div className="stats-grid compact-stats">
           <Metric label="Leituras nesta página" value={rows.length} />
           <Metric
-            label="Carros detectados nesta página"
+            label={kind === 'QUADRO' ? 'Soma das detecções em quadros' : 'Carros detectados nesta página'}
             value={number(
               rows.reduce((sum, row) => sum + row.carrosDetectados, 0),
             )}
           />
           <Metric
-            label="Pedestres detectados nesta página"
+            label={kind === 'QUADRO' ? 'Soma das pessoas em quadros' : 'Pedestres detectados nesta página'}
             value={number(
               rows.reduce((sum, row) => sum + row.pedestresDetectados, 0),
             )}
@@ -908,7 +1098,7 @@ export function TrafficPage() {
         </Card>
       </State>
       <p className="subtle">
-        Totais e gráfico consideram apenas esta página de {kind}. A API informa{' '}
+        Totais e gráfico consideram apenas esta página de {kind}. Para QUADRO, cada leitura é uma amostra instantânea; os mesmos objetos podem aparecer em várias linhas. A API informa{' '}
         {readings.data?.total ?? 0} registros no filtro.
       </p>
     </>
